@@ -180,6 +180,9 @@ static const u16 mgmt_events[] = {
 	MGMT_EV_CONTROLLER_RESUME,
 	MGMT_EV_ADV_MONITOR_DEVICE_FOUND,
 	MGMT_EV_ADV_MONITOR_DEVICE_LOST,
+	MGMT_EV_CS_CONFIG_CMPLT,
+	MGMT_EV_CS_SEC_ENABLE_CMPLT,
+	MGMT_EV_CS_PROC_ENABLE_CMPLT,
 };
 
 static const u16 mgmt_untrusted_commands[] = {
@@ -9849,6 +9852,76 @@ void mgmt_device_disconnected(struct hci_dev *hdev, bdaddr_t *bdaddr,
 
 	if (sk)
 		sock_put(sk);
+}
+
+void mgmt_cs_sec_enabled_evt(struct sk_buff *skb, struct hci_dev *hdev, u8 status, u16 conn_hdl)
+{
+	struct mgmt_ev_cs_sec_enable_cmplt ev;
+	struct sock *sk = NULL;
+
+	ev.status = status;
+	ev.conn_hdl = cpu_to_le16(conn_hdl);
+	bt_dev_dbg(hdev, "mgmt_cs_sec_enabled_evt status = %d", ev.status);
+	bt_dev_dbg(hdev, "conn hdl = %d", ev.conn_hdl);
+	bt_dev_dbg(hdev, "mgmt_cs_sec_enabled_evt sizeof(ev) %ld", sizeof(ev));
+
+	mgmt_event(MGMT_EV_CS_SEC_ENABLE_CMPLT, hdev, &ev, sizeof(ev), sk);
+}
+
+void mgmt_cs_config_complete_evt(struct sk_buff *skb, struct hci_dev *hdev, struct hci_evt_le_cs_config_complete *event)
+{
+	struct mgmt_ev_cs_config_cmplt ev;
+	struct sock *sk = NULL;
+
+	ev.status = event->status;
+	ev.conn_hdl = event->handle;
+	ev.config_id = event->config_id;
+	ev.action = event->action;
+	ev.main_mode_type = event->main_mode_type;
+	ev.sub_mode_type = event->sub_mode_type;
+	ev.min_main_mode_steps = event->min_main_mode_steps;
+	ev.max_main_mode_steps = event->max_main_mode_steps;
+	ev.main_mode_rep = event->main_mode_rep;
+	ev.mode_0_steps = event->mode_0_steps;
+	ev.role = event->role;
+	ev.rtt_type = event->rtt_type;
+	ev.cs_sync_phy = event->cs_sync_phy;
+	memcpy(ev.channel_map, event->channel_map, 10);
+	ev.channel_map_rep = event->channel_map_rep;
+	ev.channel_sel_type = event->channel_sel_type;
+	ev.ch3c_shape = event->ch3c_shape;
+	ev.ch3c_jump = event->ch3c_jump;
+	ev.reserved = event->reserved;
+	ev.t_ip1_time = event->t_ip1_time;
+	ev.t_ip2_time = event->t_ip2_time;
+	ev.t_fcs_time = event->t_fcs_time;
+	ev.t_pm_time = event->t_pm_time;
+
+	bt_dev_dbg(hdev, "mgmt_cs_config_complete_evt status %d", ev.status);
+
+	mgmt_event(MGMT_EV_CS_CONFIG_CMPLT, hdev, &ev, sizeof(ev), sk);
+}
+
+void mgmt_cs_proc_enabled_evt(struct sk_buff *skb, struct hci_dev *hdev, struct hci_evt_le_cs_procedure_enable_complete *event)
+{
+	struct mgmt_ev_cs_proc_enable_cmplt ev;
+	struct sock *sk = NULL;
+
+	ev.status = event->status;
+	ev.conn_hdl = event->handle;
+	ev.config_id = event->config_id;
+	ev.state = event->state;
+	ev.tone_ant_config_sel = event->tone_ant_config_sel;
+	ev.sel_tx_pwr = event->sel_tx_pwr;
+	memcpy(ev.sub_evt_len, event->sub_evt_len, 3);
+	ev.sub_evts_per_evt = event->sub_evts_per_evt;
+	ev.sub_evt_intrvl = event->sub_evt_intrvl;
+	ev.evt_intrvl = event->evt_intrvl;
+	ev.proc_intrvl = event->proc_intrvl;
+	ev.proc_counter = event->proc_counter;
+	ev.max_proc_len = event->max_proc_len;
+
+	mgmt_event(MGMT_EV_CS_PROC_ENABLE_CMPLT, hdev, &ev, sizeof(ev), sk);
 }
 
 void mgmt_disconnect_failed(struct hci_dev *hdev, bdaddr_t *bdaddr,

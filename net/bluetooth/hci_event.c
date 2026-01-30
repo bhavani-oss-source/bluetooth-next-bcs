@@ -3973,6 +3973,34 @@ static u8 hci_cc_set_per_adv_param(struct hci_dev *hdev, void *data,
 	return rp->status;
 }
 
+/* Channel Sounding */
+static u8 hci_cc_le_cs_set_default_settings(struct hci_dev *hdev, void *data,
+				   struct sk_buff *skb)
+{
+	struct hci_rp_le_cs_set_default_settings *rp = data;
+	struct hci_cp_le_cs_set_default_settings *cp;
+	struct hci_conn *conn;
+
+	bt_dev_dbg(hdev, "hci_cc_le_cs_set_default_settings status 0x%2.2x", rp->status);
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_LE_CS_SET_DEFAULT_SETTINGS);
+	if (!cp)
+		return rp->status;
+
+	hci_dev_lock(hdev);
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
+	if (!conn)
+		goto unlock;
+
+	if (rp->status)
+		goto unlock;
+
+unlock:
+	hci_dev_unlock(hdev);
+	return rp->status;
+}
+
 static u8 hci_cc_le_set_per_adv_enable(struct hci_dev *hdev, void *data,
 				       struct sk_buff *skb)
 {
@@ -4208,6 +4236,9 @@ static const struct hci_cc {
 	HCI_CC(HCI_OP_LE_READ_ALL_LOCAL_FEATURES,
 	       hci_cc_le_read_all_local_features,
 	       sizeof(struct hci_rp_le_read_all_local_features)),
+	HCI_CC(HCI_OP_LE_CS_SET_DEFAULT_SETTINGS,
+	       hci_cc_le_cs_set_default_settings,
+	       sizeof(struct hci_rp_le_cs_set_default_settings)),
 };
 
 static u8 hci_cc_func(struct hci_dev *hdev, const struct hci_cc *cc,
@@ -6440,6 +6471,38 @@ invalid:
 	return LE_ADV_INVALID;
 }
 
+/* Channel Sounding */
+void hci_le_cs_read_rmt_supp_cap_cmplt_evt(struct hci_dev *hdev, void *data,
+					   struct sk_buff *skb)
+{
+	struct hci_evt_le_cs_read_rmt_supp_cap_complete *ev = data;
+	struct hci_conn *conn;
+
+	/* Check if connection exists */
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (!conn) {
+		bt_dev_err(hdev, "Devices not connected!!");
+		return;
+	}
+
+	/* If Kernel experimental flag is not set or remote doesn't support cs return */
+	if (!(hdev->conn_flags & HCI_CONN_FLAG_LE_CHANNEL_SOUNDING)) {
+		bt_dev_err(hdev, "CS not supported either by remote or DUT!!");
+		return;
+	}
+
+	/* ToDo - Get command data from mgmt command */
+	/* struct hci_cp_le_cs_set_default_settings cp;
+
+	memset(&cp, 0, sizeof(cp));
+	cp.handle = __le16_to_cpu(ev->handle);
+	cp.role_enable = hdev->cs_role;
+	cp.cs_sync_ant_sel = hdev->cs_sync_ant_sel;
+	cp.max_tx_power = hdev->cs_max_tx_power;
+	bt_dev_dbg(hdev, "sending cs default settings cmd");
+	hci_send_cmd(hdev, HCI_OP_LE_CS_SET_DEFAULT_SETTINGS, sizeof(cp), &cp); */
+}
+
 static void hci_le_ext_adv_report_evt(struct hci_dev *hdev, void *data,
 				      struct sk_buff *skb)
 {
@@ -6630,6 +6693,13 @@ static void hci_le_remote_feat_complete_evt(struct hci_dev *hdev, void *data,
 
 			conn->state = BT_CONNECTED;
 			hci_connect_cfm(conn, status);
+		}
+		/* Set or Rest HCI CONN CS flag based on remote's supported features */
+		if(((conn)->features[0][5] & HCI_LE_CHANNEL_SOUNDING)  &&
+			((conn)->features[0][5] & HCI_LE_CHANNEL_SOUNDING_HOST)) {
+			hdev->conn_flags |= HCI_CONN_FLAG_LE_CHANNEL_SOUNDING;
+		} else {
+			hdev->conn_flags &= ~HCI_CONN_FLAG_LE_CHANNEL_SOUNDING;
 		}
 	}
 
@@ -7362,6 +7432,26 @@ static const struct hci_le_ev {
 		     sizeof(struct
 			    hci_evt_le_read_all_remote_features_complete),
 		     HCI_MAX_EVENT_SIZE),
+	/* [0x2C = HCI_EVT_LE_CS_READ_RMT_SUPP_CAP_COMPLETE] */
+	HCI_LE_EV_VL(HCI_EVT_LE_CS_READ_RMT_SUPP_CAP_COMPLETE,
+		     hci_le_cs_read_rmt_supp_cap_cmplt_evt,
+		     sizeof(struct hci_evt_le_cs_read_rmt_supp_cap_complete),
+		     HCI_MAX_EVENT_SIZE),
+	/* [0x2E = HCI_EVT_LE_CS_SECURITY_ENABLE_COMPLETE] */
+	HCI_LE_EV_VL(HCI_EVT_LE_CS_SECURITY_ENABLE_COMPLETE,
+		     hci_le_cs_security_enable_complete_evt,
+		     sizeof(struct hci_evt_le_cs_security_enable_complete),
+		     HCI_MAX_EVENT_SIZE),
+	/* [0x2F = HCI_EVT_LE_CS_CONFIG_COMPLETE] */
+	HCI_LE_EV_VL(HCI_EVT_LE_CS_CONFIG_COMPLETE,
+		     hci_le_cs_config_complete_evt,
+		     sizeof(struct hci_evt_le_cs_config_complete),
+		     HCI_MAX_EVENT_SIZE),
+	/* [0x30 = HCI_EVT_LE_CS_PROCEDURE_ENABLE_COMPLETE] */
+	HCI_LE_EV_VL(HCI_EVT_LE_CS_PROCEDURE_ENABLE_COMPLETE,
+		     hci_le_cs_procedure_enable_complete_evt,
+		     sizeof(struct hci_evt_le_cs_procedure_enable_complete),
+		     HCI_MAX_EVENT_SIZE),
 };
 
 static void hci_le_meta_evt(struct hci_dev *hdev, void *data,
@@ -7519,6 +7609,117 @@ static void hci_store_wake_reason(struct hci_dev *hdev, u8 event,
 
 unlock:
 	hci_dev_unlock(hdev);
+}
+
+/* Channel Sounding Events */
+static void hci_le_cs_procedure_enable_complete_evt(struct hci_dev *hdev, void *data,
+					struct sk_buff *skb)
+{
+	struct hci_evt_le_cs_procedure_enable_complete *ev = data;
+	struct hci_conn *conn;
+
+	/* Check if connection exists */
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (!conn) {
+		bt_dev_err(hdev, "Devices not connected!!");
+		return;
+	}
+
+	/* If Kernel experimental flag is not set or remote doesn't support cs return */
+	if (!(hdev->conn_flags & HCI_CONN_FLAG_LE_CHANNEL_SOUNDING)) {
+		bt_dev_err(hdev, "CS not supported either by remote or DUT!!");
+		return;
+	}
+
+	bt_dev_dbg(hdev, "hci_le_cs_procedure_enable_complete_evt");
+
+	bt_dev_dbg(hdev, "status :%d, handle : %d, config id : %d, state : %d, tone_ant_config_sel : %d, \
+			sel_tx_pwr : %d, num_ant_paths : %d, num_steps_reported : %d, step_data_len : %d",
+			ev->status, ev->handle, ev->config_id, ev->state, ev->tone_ant_config_sel,
+			ev->sel_tx_pwr, ev->num_ant_paths, ev->num_steps_reported, ev->step_data_len);
+
+	for (int i = 0; i < 3; i++) {
+		bt_dev_dbg(hdev, "sub_evt_len = %d", ev->sub_evt_len[i]);
+	}
+
+	bt_dev_dbg(hdev, "sub_evts_per_evt : %d, sub_evt_intrvl : %d, evt_intrvl : %d, proc_intrvl : %d, \
+				proc_counter : %d, max_proc_len : %d",
+				ev->sub_evts_per_evt, ev->sub_evt_intrvl, ev->evt_intrvl, ev->proc_intrvl,
+				ev->proc_counter, ev->max_proc_len);
+
+	/* Notify MGMT layer */
+	/* mgmt_cs_proc_enabled_evt(skb, hdev, ev); */
+}
+
+static void hci_le_cs_security_enable_complete_evt(struct hci_dev *hdev, void *data,
+					struct sk_buff *skb)
+{
+	struct hci_evt_le_cs_security_enable_complete *ev = data;
+	struct hci_conn *conn;
+
+	/* Check if connection exists */
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (!conn) {
+		bt_dev_err(hdev, "Devices not connected!!");
+		return;
+	}
+
+	/* If Kernel experimental flag is not set or remote doesn't support cs return */
+	if (!(hdev->conn_flags & HCI_CONN_FLAG_LE_CHANNEL_SOUNDING)) {
+		bt_dev_err(hdev, "CS not supported either by remote or DUT!!");
+		return;
+	}
+
+	bt_dev_dbg(hdev, "hci_le_cs_security_enable_complete_evt");
+	bt_dev_dbg(hdev, "status : %d, handle : %d", ev->status, ev->handle);
+
+	/* Notify MGMT layer */
+	/* mgmt_cs_sec_enabled_evt(skb, hdev, ev->status, ev->handle); */
+}
+
+
+static void hci_le_cs_config_complete_evt(struct hci_dev *hdev, void *data,
+					struct sk_buff *skb)
+{
+	struct hci_evt_le_cs_config_complete *ev = data;
+	struct hci_conn *conn;
+
+	/* Check if connection exists */
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (!conn) {
+		bt_dev_err(hdev, "Devices not connected!!");
+		return;
+	}
+
+	/* If Kernel experimental flag is not set or remote doesn't support cs return */
+	if (!(hdev->conn_flags & HCI_CONN_FLAG_LE_CHANNEL_SOUNDING)) {
+		bt_dev_err(hdev, "CS not supported either by remote or DUT!!");
+		return;
+	}
+
+	hdev->cs_role = ev->role;
+
+	bt_dev_dbg(hdev, "hci_le_cs_config_complete_evt");
+	bt_dev_dbg(hdev,
+				"status:%d , handle:%d, config_id:%d, action:%d, main_mode_type:%d, sub_mode_type:%d, \
+				min_main_mode_steps:%d, max_main_mode_steps:%d, main_mode_rep:%d, mode_0_steps:%d, \
+				role:%d, rtt_type:%d, cs_sync_phy:%d, channel_map_rep:%d, channel_sel_type:%d, \
+				ch3c_shape:%d, ch3c_jump:%d, reserved:%d, t_ip1_time:%d, t_ip2_time:%d, \
+				t_fcs_time:%d, t_pm_time:%d",
+				ev->status, ev->handle, ev->config_id, ev->action, ev->main_mode_type,
+				ev->sub_mode_type, ev->min_main_mode_steps, ev->max_main_mode_steps,
+				ev->main_mode_rep, ev->mode_0_steps, ev->role, ev->rtt_type,
+				ev->cs_sync_phy, ev->channel_map_rep, ev->channel_sel_type,
+				ev->ch3c_shape, ev->ch3c_jump, ev->reserved, ev->t_ip1_time,
+				ev->t_ip2_time, ev->t_fcs_time, ev->t_pm_time);
+
+
+	for (int i = 0; i < 10; i++) {
+		bt_dev_dbg(hdev, "channel_map = %d", ev->channel_map[i]);
+	}
+
+	/* Notify MGMT layer */
+	/* mgmt_cs_config_complete_evt(skb, hdev, ev); */
 }
 
 #define HCI_EV_VL(_op, _func, _min_len, _max_len) \

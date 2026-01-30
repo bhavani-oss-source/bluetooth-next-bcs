@@ -1195,3 +1195,67 @@ struct mgmt_ev_mesh_device_found {
 struct mgmt_ev_mesh_pkt_cmplt {
 	__u8	handle;
 } __packed;
+
+/* Channel Sounding events */
+#define MGMT_EV_CS_CONFIG_CMPLT                    0x0036
+
+#define CS_MODE_ZERO				0x00
+#define CS_MODE_ONE				0x01
+#define CS_MODE_TWO				0x02
+#define CS_MODE_THREE				0x03
+
+#define CS_REFLECTOR			0x01
+#define CS_INITIATOR			0x00
+
+#define CS_MAX_ANT_PATHS         0x05
+#define CS_MAX_STEPS             0xA0
+#define CS_MAX_STEP_DATA_LEN     0xFF
+
+struct mgmt_ev_cs_config_cmplt {
+    __u8	status;
+    __le16	conn_hdl;
+    __u8	config_id;
+    __u8	action;
+    __u8	main_mode_type;
+    __u8	sub_mode_type;
+    __u8	min_main_mode_steps;
+    __u8	max_main_mode_steps;
+    __u8	main_mode_rep;
+    __u8	mode_0_steps;
+    __u8	role;
+    __u8	rtt_type;
+    __u8	cs_sync_phy;
+    __u8	channel_map[10];
+    __u8	channel_map_rep;
+    __u8	channel_sel_type;
+    __u8	ch3c_shape;
+    __u8	ch3c_jump;
+    __u8	reserved;
+    __u8	t_ip1_time;
+    __u8	t_ip2_time;
+    __u8	t_fcs_time;
+    __u8	t_pm_time;
+} __packed;
+
+#define MGMT_EV_CS_SEC_ENABLE_CMPLT                0x0037
+struct mgmt_ev_cs_sec_enable_cmplt {
+    __u8	status;
+    __le16	conn_hdl;
+} __packed;
+
+#define MGMT_EV_CS_PROC_ENABLE_CMPLT            0x0038
+struct mgmt_ev_cs_proc_enable_cmplt {
+    __u8	status;
+    __le16	conn_hdl;
+    __u8	config_id;
+    __u8	state;
+    __u8	tone_ant_config_sel;
+    __s8	sel_tx_pwr;
+    __u8	sub_evt_len[3];
+    __u8	sub_evts_per_evt;
+    __le16	sub_evt_intrvl;
+    __le16	evt_intrvl;
+    __le16	proc_intrvl;
+    __le16	proc_counter;
+    __le16	max_proc_len;
+} __packed;

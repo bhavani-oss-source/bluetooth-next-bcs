@@ -167,6 +167,7 @@ enum hci_conn_flags {
 	HCI_CONN_FLAG_DEVICE_PRIVACY = BIT(1),
 	HCI_CONN_FLAG_ADDRESS_RESOLUTION = BIT(2),
 	HCI_CONN_FLAG_PAST = BIT(3),
+	HCI_CONN_FLAG_LE_CHANNEL_SOUNDING = BIT(4),
 };
 typedef u8 hci_conn_flags_t;
 
@@ -440,6 +441,11 @@ struct hci_dev {
 	__u16		advmon_allowlist_duration;
 	__u16		advmon_no_filter_duration;
 	__u8		enable_advmon_interleave_scan;
+
+	__u8		cs_role;
+	__u8		cs_sync_ant_sel;
+	__s8		cs_max_tx_power;
+	__u8		cs_rtt_type;
 
 	__u16		devid_source;
 	__u16		devid_vendor;
@@ -1638,6 +1644,8 @@ static inline void hci_sockcm_init(struct sockcm_cookie *sockc, struct sock *sk)
 		.tsflags = READ_ONCE(sk->sk_tsflags),
 	};
 }
+void hci_le_cs_read_rmt_supp_cap_cmplt_evt(struct hci_dev *hdev, void *data,
+					   struct sk_buff *skb);
 
 /*
  * hci_conn_get() and hci_conn_put() are used to control the life-time of an
@@ -2493,6 +2501,9 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __le64 rand,
 
 void hci_copy_identity_address(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			       u8 *bdaddr_type);
+void mgmt_cs_sec_enabled_evt(struct sk_buff *skb, struct hci_dev *hdev, u8 status, u16 conn_hdl);
+void mgmt_cs_config_complete_evt(struct sk_buff *skb, struct hci_dev *hdev, struct hci_evt_le_cs_config_complete *event);
+void mgmt_cs_proc_enabled_evt(struct sk_buff *skb, struct hci_dev *hdev, struct hci_evt_le_cs_procedure_enable_complete *event);
 
 #define SCO_AIRMODE_MASK       0x0003
 #define SCO_AIRMODE_CVSD       0x0000
